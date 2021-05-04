@@ -24,8 +24,8 @@ if os.path.splitext(args["input"])[1] != ".bag":
     exit()
 
 # ChAruco board variables
-CHARUCOBOARD_ROWCOUNT = 7
-CHARUCOBOARD_COLCOUNT = 5 
+CHARUCOBOARD_ROWCOUNT = 8
+CHARUCOBOARD_COLCOUNT = 6 
 ARUCO_DICT = aruco.Dictionary_get(aruco.DICT_5X5_50)
 
 # Create constants to be passed into OpenCV and Aruco methods

@@ -6,20 +6,33 @@ import sys
 import os
 import pickle
 
-def findArucoMarkers(img, markerSize=6, totalMarkers=250, draw=True):
-    imgGray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    key = getattr(aruco, f'DICT_{markerSize}X{markerSize}_{totalMarkers}')
-    arucoDict = aruco.Dictionary_get(key)
-    arucoParam = aruco.DetectorParameters_create()
-    bboxs, ids, rejected = aruco.detectMarkers(imgGray, 
-                                                arucoDict, 
-                                                parameters=arucoParam)
-    if draw:
-        aruco.drawDetectedMarkers(img, bboxs)
-    return bboxs, ids
+
+# def findArucoMarkers(img, markerSize=5, totalMarkers=250, draw=True):
+#     imgGray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+#     key = getattr(aruco, f'DICT_{markerSize}X{markerSize}_{totalMarkers}')
+#     arucoDict = aruco.Dictionary_get(key)
+#     arucoParam = aruco.DetectorParameters_create()
+#     bboxs, ids, rejected = aruco.detectMarkers(imgGray, 
+#                                                 arucoDict, 
+#                                                 parameters=arucoParam)
+#     if draw:
+#         aruco.drawDetectedMarkers(img, bboxs)
+#     return bboxs, ids
 
 
 def main():
+
+    if not os.path.exists('CameraCalibration.pckl'):
+        print("You need to calibrate the camera you'll be using. See calibration project directory for details.")
+        exit()
+    else:
+        f = open('CameraCalibration.pckl', 'rb')
+        (cameraMatrix, distCoeffs, _, _) = pickle.load(f)
+        f.close()
+        if cameraMatrix is None or distCoeffs is None:
+            print("Calibration issue. Remove CameraCalibration.pckl and recalibrate your camera with calibration_ChAruco.py.")
+            exit()
+
     pipeline = rs.pipeline()
     config = rs.config()
 
@@ -32,7 +45,8 @@ def main():
     config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
 
     if device_product_line == 'L500':
-        config.enable_stream(rs.stream.color, 960, 540, rs.format.bgr8, 30)
+        config.enable_stream(rs.stream.color, 1280, 720, rs.format.bgr8, 30)
+        print("get L500 product line && stream color size 1280x720")
     else:
         config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
 
@@ -55,6 +69,23 @@ def main():
     align_to = rs.stream.color
     align = rs.align(align_to)
 
+    # Constant parameters used in Aruco methods
+    ARUCO_PARAMETERS = aruco.DetectorParameters_create()
+    ARUCO_DICT = aruco.Dictionary_get(aruco.DICT_5X5_50)
+
+    # Create grid board object we're using in our stream
+    board = aruco.GridBoard_create(
+            markersX=1,
+            markersY=1,
+            markerLength=0.09,
+            markerSeparation=0.01,
+            dictionary=ARUCO_DICT)
+
+    # Create vectors we'll be using for rotations and translations for postures
+    rotation_vectors, translation_vectors = None, None
+    axis = np.float32([[-.5,-.5,0], [-.5,.5,0], [.5,.5,0], [.5,-.5,0],
+                    [-.5,-.5,1],[-.5,.5,1],[.5,.5,1],[.5,-.5,1] ])
+
     # Streaming loop
     try:
         while True:
@@ -76,9 +107,27 @@ def main():
 
             depth_image = np.asanyarray(aligned_depth_frame.get_data())
             color_image = np.asanyarray(color_frame.get_data())
-            
-            corners, ids = findArucoMarkers(color_image)
-            print(corners[0][0][0],corners[0][0][1],corners[0][0][2],corners[0][0][3])
+            gray = cv2.cvtColor(color_image, cv2.COLOR_BGR2GRAY)
+            # Detect Aruco markers
+            corners, ids, rejectedImgPoints = aruco.detectMarkers(gray, ARUCO_DICT, parameters=ARUCO_PARAMETERS)
+    
+            # Refine detected markers
+            # Eliminates markers not part of our board, adds missing markers to the board
+            corners, ids, rejectedImgPoints, recoveredIds = aruco.refineDetectedMarkers(
+                    image = gray,
+                    board = board,
+                    detectedCorners = corners,
+                    detectedIds = ids,
+                    rejectedCorners = rejectedImgPoints,
+                    cameraMatrix = cameraMatrix,
+                    distCoeffs = distCoeffs)   
+
+            #corners, ids = findArucoMarkers(color_image)
+
+            # Outline all of the markers detected in our image
+            # Uncomment below to show ids as well
+            # ProjectImage = aruco.drawDetectedMarkers(ProjectImage, corners, ids, borderColor=(0, 0, 255))
+            color_image = aruco.drawDetectedMarkers(color_image, corners, borderColor=(0, 0, 255))
 
             if ids is not None and len(ids) > 0:
                 # Estimate the posture per each Aruco marker
