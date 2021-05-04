@@ -1,13 +1,13 @@
 ArUco based Quad-copter auto-landing system
 =============
-*single asterisks*This project is vision base system for Quad-copter auto-laning system
-*single asterisks*H/W system will be updated
-*single asterisks*Now code is only in vision system on python
+- This project is vision base system for Quad-copter auto-laning system
+- H/W system will be updated
+- Now code is only in vision system on python
 
 REQUIREMENTS
 -------------
-*single asterisks*This project uses Intel realsense camera L515 
-*single asterisks*openCV + ArUco marker detection system
+- This project uses Intel realsense camera L515 
+- openCV + ArUco marker detection system
 
 USAGE
 -------------
