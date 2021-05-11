@@ -5,19 +5,52 @@ import cv2.aruco as aruco
 import sys
 import os
 import pickle
+import math
 
+def drawCube(img, corners, imgpts):
+    imgpts = np.int32(imgpts).reshape(-1,2)
 
-# def findArucoMarkers(img, markerSize=5, totalMarkers=250, draw=True):
-#     imgGray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-#     key = getattr(aruco, f'DICT_{markerSize}X{markerSize}_{totalMarkers}')
-#     arucoDict = aruco.Dictionary_get(key)
-#     arucoParam = aruco.DetectorParameters_create()
-#     bboxs, ids, rejected = aruco.detectMarkers(imgGray, 
-#                                                 arucoDict, 
-#                                                 parameters=arucoParam)
-#     if draw:
-#         aruco.drawDetectedMarkers(img, bboxs)
-#     return bboxs, ids
+    # draw ground floor in green
+    # img = cv2.drawContours(img, [imgpts[:4]],-1,(0,255,0),-3)
+
+    # draw pillars in blue color
+    for i,j in zip(range(4),range(4,8)):
+        img = cv2.line(img, tuple(imgpts[i]), tuple(imgpts[j]),(255),3)
+
+    # draw top layer in red color
+    img = cv2.drawContours(img, [imgpts[4:]],-1,(0,0,255),3)
+
+    return img
+
+def ra2de(ra):
+    return ra*180/math.pi
+
+def Rmat2euler(rmat):
+    [[r11,r12,r13],[r21,r22,r23],[r31,r32,r33]] = rmat
+    x = math.atan2(r32, r33)
+    y = math.atan2(-r31, math.sqrt(pow(r32,2)+pow(r33,2)))
+    z = math.atan2(r21,r11)
+    #print(ra2de(x), ra2de(y), ra2de(z))
+    print("Angle_X = {0:+.2f}, Angle_Y = {1:+.2f}, Angle_Z = {2:+.2f}".format(ra2de(x), ra2de(y), ra2de(z)))
+    return x,y,z
+
+def getleg(rmat):
+    [[r11,r12,r13],[r21,r22,r23],[r31,r32,r33]] = rmat
+    A = [[1,0,-r13],[0,1,-r23],[0,0,-r33]]
+    B = [[r11,r12],[r21,r22],[r31,r32]]
+    C = np.transpose([1,1])
+    leg_axis = np.transpose([[1,1],[-1,1],[1,-1],[-1,-1]])
+    A_inv = np.linalg.inv(A)
+    L = 95
+    print(np.dot(A_inv,np.dot(B,leg_axis))[2]*95)
+    #print(np.transpose(np.dot(A_inv,np.dot(B,leg_axis))*95))
+    #print(np.dot(np.dot(A_inv,B),C)*95)
+
+    # angle_x,angle_y,angle_z = Rmat2euler(rmat)
+    # L = 140
+    # z1 = (math.sin(angle_y)-math.sin(angle_x)*math.cos(angle_y))/(math.cos(angle_y)*math.cos(angle_y))*L
+    # print(np.dot(rmat,np.transpose([140,140,z1])))
+    
 
 
 def main():
@@ -73,18 +106,20 @@ def main():
     ARUCO_PARAMETERS = aruco.DetectorParameters_create()
     ARUCO_DICT = aruco.Dictionary_get(aruco.DICT_5X5_50)
 
-    # Create grid board object we're using in our stream
-    board = aruco.GridBoard_create(
-            markersX=1,
-            markersY=1,
-            markerLength=0.09,
-            markerSeparation=0.01,
-            dictionary=ARUCO_DICT)
+    # # Create grid board object we're using in our stream
+    # board = aruco.GridBoard_create(
+    #         markersX=1,
+    #         markersY=1,
+    #         markerLength=0.09,
+    #         markerSeparation=0.01,
+    #         dictionary=ARUCO_DICT)
 
     # Create vectors we'll be using for rotations and translations for postures
     rotation_vectors, translation_vectors = None, None
-    axis = np.float32([[-.5,-.5,0], [-.5,.5,0], [.5,.5,0], [.5,-.5,0],
-                    [-.5,-.5,1],[-.5,.5,1],[.5,.5,1],[.5,-.5,1] ])
+    # axis = np.float32([[-.5,-.5,0], [-.5,.5,0], [.5,.5,0], [.5,-.5,0],
+    #                 [-.5,-.5,1],[-.5,.5,1],[.5,.5,1],[.5,-.5,1] ])
+    axis = np.float32([[-1,-1,0], [-1,1,0], [1,1,0], [1,-1,0],
+                    [-1,-1,1],[-1,1,1],[1,1,1],[1,-1,1] ])                
 
     # Streaming loop
     try:
@@ -113,26 +148,24 @@ def main():
     
             # Refine detected markers
             # Eliminates markers not part of our board, adds missing markers to the board
-            corners, ids, rejectedImgPoints, recoveredIds = aruco.refineDetectedMarkers(
-                    image = gray,
-                    board = board,
-                    detectedCorners = corners,
-                    detectedIds = ids,
-                    rejectedCorners = rejectedImgPoints,
-                    cameraMatrix = cameraMatrix,
-                    distCoeffs = distCoeffs)   
+            # corners, ids, rejectedImgPoints, recoveredIds = aruco.refineDetectedMarkers(
+            #         image = gray,
+            #         board = board,
+            #         detectedCorners = corners,
+            #         detectedIds = ids,
+            #         rejectedCorners = rejectedImgPoints,
+            #         cameraMatrix = cameraMatrix,
+            #         distCoeffs = distCoeffs)   
 
             #corners, ids = findArucoMarkers(color_image)
 
             # Outline all of the markers detected in our image
             # Uncomment below to show ids as well
-            # ProjectImage = aruco.drawDetectedMarkers(ProjectImage, corners, ids, borderColor=(0, 0, 255))
             color_image = aruco.drawDetectedMarkers(color_image, corners, borderColor=(0, 0, 255))
 
             if ids is not None and len(ids) > 0:
                 # Estimate the posture per each Aruco marker
                 rotation_vectors, translation_vectors, _objPoints = aruco.estimatePoseSingleMarkers(corners, 1, cameraMatrix, distCoeffs)
-                
                 for rvec, tvec in zip(rotation_vectors, translation_vectors):
                     if len(sys.argv) == 2 and sys.argv[1] == 'cube':
                         try:
@@ -140,10 +173,13 @@ def main():
                             color_image = drawCube(color_image, corners, imgpts)
                         except:
                             continue
-                    else:    
+                    else:
+                        Rmat, jacobian = cv2.Rodrigues(rvec)
+                        getleg(Rmat)
                         color_image = aruco.drawAxis(color_image, cameraMatrix, distCoeffs, rvec, tvec, 1)
-
+                    
             cv2.imshow('test frame', color_image)
+            
 
             # Press esc or 'q' to close the image window
             key = cv2.waitKey(1)
