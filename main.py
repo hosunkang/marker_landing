@@ -34,24 +34,54 @@ def Rmat2euler(rmat):
     print("Angle_X = {0:+.2f}, Angle_Y = {1:+.2f}, Angle_Z = {2:+.2f}".format(ra2de(x), ra2de(y), ra2de(z)))
     return x,y,z
 
-def getleg(rmat):
-    [[r11,r12,r13],[r21,r22,r23],[r31,r32,r33]] = rmat
-    A = [[1,0,-r13],[0,1,-r23],[0,0,-r33]]
-    B = [[r11,r12],[r21,r22],[r31,r32]]
-    C = np.transpose([1,1])
-    leg_axis = np.transpose([[1,1],[-1,1],[1,-1],[-1,-1]])
-    A_inv = np.linalg.inv(A)
-    L = 95
-    print(np.dot(A_inv,np.dot(B,leg_axis))[2]*95)
-    #print(np.transpose(np.dot(A_inv,np.dot(B,leg_axis))*95))
-    #print(np.dot(np.dot(A_inv,B),C)*95)
-
-    # angle_x,angle_y,angle_z = Rmat2euler(rmat)
-    # L = 140
-    # z1 = (math.sin(angle_y)-math.sin(angle_x)*math.cos(angle_y))/(math.cos(angle_y)*math.cos(angle_y))*L
-    # print(np.dot(rmat,np.transpose([140,140,z1])))
+def imu2Rgb(imu):
+    x_de, y_de, z_de = imu
+    x = x_de*math.pi/180
+    y = y_de*math.pi/180
+    z = z_de*math.pi/180
     
+    #ZYX rotation
+    r11 = math.cos(y)*math.cos(z)
+    r12 = math.sin(x)*math.sin(y)*math.cos(z)-math.sin(x)*math.cos(z)
+    r13 = math.cos(x)*math.sin(y)*math.cos(z)+math.sin(x)*math.sin(z)
+    r21 = math.cos(y)*math.sin(z)
+    r22 = math.sin(x)*math.sin(y)*math.sin(z)+math.cos(x)*math.cos(z)
+    r23 = math.cos(x)*math.sin(y)*math.sin(z)-math.sin(x)*math.cos(z)
+    r31 = -math.sin(y)
+    r32 = math.sin(x)*math.cos(y)
+    r33 = math.cos(x)*math.cos(y)
+    
+    rgb = np.array([[r11, r12, r13], [r21, r22, r23],[r31, r32, r33]])
+    return rgb
 
+# def getleg(rmat):
+#     [[r11,r12,r13],[r21,r22,r23],[r31,r32,r33]] = rmat
+#     A = [[1,0,-r13],[0,1,-r23],[0,0,-r33]]
+#     B = [[r11,r12],[r21,r22],[r31,r32]]
+#     C = np.transpose([1,1])
+#     leg_axis1 = np.transpose([[1,1],[-1,1],[1,-1],[-1,-1]])
+#     leg_axis2 = [[1,1],[-1,1],[1,-1],[-1,-1]]
+#     A_inv = np.linalg.inv(A)
+#     L = 95
+#     #print(np.dot(A_inv,np.dot(B,leg_axis1))[2]*95)
+#     #print(np.transpose(np.dot(A_inv,np.dot(B,leg_axis))*95))
+#     #print(np.dot(np.dot(A_inv,B),C)[2]*95)
+#     print(r31, r32, r33)
+#     #print((-L/r33)*np.dot(leg_axis2, [[r31],[r32]]))
+
+#     angle_x,angle_y,angle_z = Rmat2euler(rmat)
+#     #z1 = (math.sin(angle_y)-math.sin(angle_x)*math.cos(angle_y))/(math.cos(angle_y)*math.cos(angle_y))*L
+#     #print(z1)
+    
+def getleg(Rct, imu):
+    Rgb = imu2Rgb(imu)
+    Rbc = np.array([[1,0,0], [0,-1,0], [0,0,-1]])  # Axis-x 180 degree rotation
+    
+    # Total rotation matrix . from ground to target
+    Rgt = np.dot(np.dot(Rgb,Rbc),Rct)
+    x, y, z = Rmat2euler(Rgt)
+    # Rbt = np.dot(Rbc,Rct)
+    # x, y, z = Rmat2euler(Rbt)
 
 def main():
 
@@ -162,6 +192,8 @@ def main():
             # Outline all of the markers detected in our image
             # Uncomment below to show ids as well
             color_image = aruco.drawDetectedMarkers(color_image, corners, borderColor=(0, 0, 255))
+            
+            imu_angle = [0,0,0] ## imu value not be changed
 
             if ids is not None and len(ids) > 0:
                 # Estimate the posture per each Aruco marker
@@ -175,7 +207,7 @@ def main():
                             continue
                     else:
                         Rmat, jacobian = cv2.Rodrigues(rvec)
-                        getleg(Rmat)
+                        getleg(Rmat, imu_angle)
                         color_image = aruco.drawAxis(color_image, cameraMatrix, distCoeffs, rvec, tvec, 1)
                     
             cv2.imshow('test frame', color_image)
